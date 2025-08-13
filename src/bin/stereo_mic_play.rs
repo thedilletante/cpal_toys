@@ -60,10 +60,10 @@ fn main() -> anyhow::Result<()> {
     let mut output: Option<(cpal::Device, cpal::SupportedStreamConfig)> = None;
 
     for device in output_devices {
-        //if device.name()? != "Михаил’s AirPods Pro" {
-            //// Skip the specific device
-            //continue;
-        //}
+        if device.name()? != "Михаил’s AirPods Pro" {
+            // Skip the specific device
+            continue;
+        }
         let configs = all_output_configs(&device)?;
         for config_out in configs {
             if config_out.sample_rate() == config.sample_rate() && config_out.channels() == 2 {
@@ -80,8 +80,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut input_config: cpal::StreamConfig = config.into();
     let mut output_config: cpal::StreamConfig = output_config.into();
-    input_config.buffer_size = cpal::BufferSize::Fixed(32);
-    output_config.buffer_size = cpal::BufferSize::Fixed(32);
+    input_config.buffer_size = cpal::BufferSize::Fixed(15);
+    output_config.buffer_size = cpal::BufferSize::Fixed(15);
 
     let left_queue = Arc::new(Queue::new());
     let left_queue_input = left_queue.clone();
@@ -121,7 +121,7 @@ fn main() -> anyhow::Result<()> {
             let left_chunk = left_queue.pop();
             let right_chunk = right_queue.pop();
 
-            for ((out, left), right) in data.chunks_exact_mut(2).zip(left_chunk.iter().flatten()).zip(right_chunk.iter().flatten()) {
+            for ((left, right), out) in left_chunk.iter().flatten().zip(right_chunk.iter().flatten()).zip(data.chunks_exact_mut(2)) {
                 out[0] = *left;
                 out[1] = *right;
             }

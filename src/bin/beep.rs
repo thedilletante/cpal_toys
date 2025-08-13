@@ -3,6 +3,8 @@ use cpal::{
     FromSample, Sample, SizedSample, I24,
 };
 
+use cpal_toy::{TonePlayerConfig, TonePlayer};
+
 fn main() -> anyhow::Result<()> {
 
     let host = cpal::default_host();
@@ -37,30 +39,20 @@ pub fn run<T>(device: &cpal::Device, config: &mut cpal::StreamConfig) -> Result<
 where
     T: SizedSample + FromSample<f32>,
 {
-    config.buffer_size = cpal::BufferSize::Fixed(4096);
-    let sample_rate = config.sample_rate.0 as f32;
-    let channels = config.channels as usize;
-
-    // Produce a sinusoid of maximum amplitude.
-    let mut sample_clock = 0f32;
-    let mut next_value_left = move || {
-        sample_clock = (sample_clock + 1.0) % sample_rate;
-        let freq = if sample_clock > sample_rate / 2.0 { 440.0 } else { 490.0 };
-        (sample_clock * freq * 2.0 * std::f32::consts::PI / sample_rate).sin()
-    };
-    let mut next_value_right = move || {
-        sample_clock = (sample_clock + 1.0) % sample_rate;
-        let freq = if sample_clock > sample_rate / 2.0 { 550.0 } else { 510.0 };
-        (sample_clock * freq * 2.0 * std::f32::consts::PI / sample_rate).sin()
-    };
+    config.buffer_size = cpal::BufferSize::Fixed(32);
+    let mut player = TonePlayer::with_config(
+        TonePlayerConfig::builder()
+            .sample_rate(config.sample_rate.0 as u32)
+            .channels(config.channels as usize)
+            .build(),
+    );
 
     let err_fn = |err| eprintln!("an error occurred on stream: {err}");
 
     let stream = device.build_output_stream(
         config,
-        move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
-            println!("Callback info {:?}", info);
-            write_data(data, channels, &mut next_value_left, &mut next_value_right)
+        move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+            write_data(data, &mut player);
         },
         err_fn,
         None,
@@ -72,15 +64,9 @@ where
     Ok(())
 }
 
-fn write_data<T>(output: &mut [T], channels: usize, next_sample_left: &mut dyn FnMut() -> f32, next_sample_right: &mut dyn FnMut() -> f32)
+fn write_data<T>(output: &mut [T], player: &mut TonePlayer)
 where
     T: Sample + FromSample<f32>,
 {
-    for frame in output.chunks_mut(channels) {
-        assert_eq!(frame.len(), 2);
-        let value_left: T = T::from_sample(next_sample_left());
-        let value_right: T = T::from_sample(next_sample_right());
-        frame[0] = value_left;
-        frame[1] = value_right;
-    }
+    player.fill_buffer(output);
 }
