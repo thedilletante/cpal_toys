@@ -1,4 +1,6 @@
 use cpal::{Sample, FromSample};
+use derive_builder::Builder;
+
 
 const DEFAULT_FREQUENCY: f32 = 440.0; // A4 note
 const DEFAULT_SAMPLE_RATE: u32 = 48000; // Common sample rate
@@ -18,7 +20,7 @@ impl TonePlayer {
     }
 
     pub fn fill_buffer<T>(&mut self, buffer: &mut [T])
-        where T: Sample + FromSample<f32>
+        where T: Sample + FromSample<f32> + std::ops::AddAssign
     {
         for frame in buffer.chunks_mut(self.config.channels) {
             self.current_sample_clock += 1.0;
@@ -32,31 +34,30 @@ impl TonePlayer {
                     std::f32::consts::PI
                 ) /
                 self.config.sample_rate as f32
-            ).sin();
+            ).sin() * self.config.factor;
 
             let sample_value: T = T::from_sample(value);
 
             for channel in frame.iter_mut() {
-                *channel = sample_value;
+                if self.config.mix {
+                    *channel += sample_value;
+                } else {
+                    *channel = sample_value;
+                }
             }
         }
     }
 }
 
+#[derive(Builder)]
 pub struct TonePlayerConfig {
     frequency: f32,
     sample_rate: u32,
     channels: usize,
-}
-
-impl TonePlayerConfig {
-    pub fn builder() -> TonePlayerConfigBuilder {
-        TonePlayerConfigBuilder {
-            frequency: None,
-            sample_rate: None,
-            channels: None,
-        }
-    }
+    #[builder(default = "false")]
+    mix: bool,
+    #[builder(default = "1.0")]
+    factor: f32,
 }
 
 impl Default for TonePlayerConfig {
@@ -65,43 +66,11 @@ impl Default for TonePlayerConfig {
             frequency: DEFAULT_FREQUENCY,
             sample_rate: DEFAULT_SAMPLE_RATE,
             channels: DEFAULT_CHANNELS,
+            mix: false,
+            factor: 1.0,
         }
     }
 }
-
-pub struct TonePlayerConfigBuilder {
-    frequency: Option<f32>,
-    sample_rate: Option<u32>,
-    channels: Option<usize>,
-}
-
-impl TonePlayerConfigBuilder {
-
-    pub fn frequency(mut self, frequency: f32) -> Self {
-        self.frequency = Some(frequency);
-        self
-    }
-
-    pub fn sample_rate(mut self, sample_rate: u32) -> Self {
-        self.sample_rate = Some(sample_rate);
-        self
-    }
-
-    pub fn channels(mut self, channels: usize) -> Self {
-        self.channels = Some(channels);
-        self
-    }
-
-    pub fn build(self) -> TonePlayerConfig {
-        TonePlayerConfig {
-            frequency: self.frequency.unwrap_or(DEFAULT_FREQUENCY),
-            sample_rate: self.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE),
-            channels: self.channels.unwrap_or(DEFAULT_CHANNELS),
-        }
-    }
-}
-
-
 
 #[cfg(test)]
 mod tests {
@@ -110,11 +79,12 @@ mod tests {
     #[test]
     fn test_tone_player() {
         let mut player = TonePlayer::with_config(
-            TonePlayerConfig::builder()
+            TonePlayerConfigBuilder::default()
                 .frequency(440.0)
                 .sample_rate(48000)
                 .channels(1)
-                .build(),
+                .build()
+                .expect("Failed to build TonePlayerConfig"),
         );
 
         let mut buffer: Vec<f32> = vec![0.0; 48]; // 48 samples for 1 ms at 48 kHz
