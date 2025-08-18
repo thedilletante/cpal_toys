@@ -63,19 +63,19 @@ impl Window {
 
         let n = self.buffer.len();
 
-        let mut frequencies = Vec::with_capacity(n / 2);
-        for k in 0..n / 2 {
+        let mut frequencies = Vec::with_capacity(20000 - 20);
+        for freq in 20..20_000 {
             let mut real = 0.0;
             let mut imag = 0.0;
 
             for (i, &sample) in self.buffer.iter().enumerate() {
-                let angle = 2.0 * std::f64::consts::PI * (k as f64 * i as f64 / n as f64);
+                let angle = 2.0 * std::f64::consts::PI * (freq as f64 * i as f64 / n as f64);
                 real += sample as f64 * angle.cos();
                 imag -= sample as f64 * angle.sin(); // Note: imaginary part is negated
             }
 
             let magnitude = (real * real + imag * imag).sqrt();
-            frequencies.push((k as f64, magnitude));
+            frequencies.push((freq as f64, magnitude));
         }
         Some(frequencies)
     }
