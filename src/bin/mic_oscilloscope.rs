@@ -61,14 +61,29 @@ fn run(terminal: &mut ratatui::DefaultTerminal, queue: Arc<Queue<Vec<f32>>>, tot
 }
 
 fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize, window: &Window) {
-    let layout = Layout::vertical([Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)]).spacing(1);
-    let [top, dbfs_area, oscilloscope_area] = layout.areas(frame.area());
+    let layout = Layout::vertical([Constraint::Length(1), Constraint::Length(3), Constraint::Percentage(30), Constraint::Fill(1)]).spacing(1);
+    let [top, dbfs_area, oscilloscope_area, frequencies_area] = layout.areas(frame.area());
 
     let title = Line::from_iter([
         Span::from("Oscilloscope").bold(),
         Span::from(" (Press 'q' to quit)"),
     ]);
     frame.render_widget(title.centered(), top);
+
+    let dbfs_percent = {
+        if let Some(dbfs) = window.calculate_dbfs() {
+            let low_limit = -40.0; // dBFS low limit
+            let value = dbfs.min(0.0).max(low_limit);
+            (value - low_limit) / (-low_limit) // Normalize to 0.0 - 1.0
+        } else {
+            0.0
+        }
+    };
+    let dbfs_gauge = Gauge::default()
+        .block(Block::default().title("dBFS").borders(Borders::ALL))
+        .gauge_style(Color::Cyan)
+        .ratio(dbfs_percent as f64);
+    frame.render_widget(dbfs_gauge, dbfs_area);
 
     let data = samples.iter().enumerate().map(|(i, &sample)| {
         let x = (i as f64 / total_samples as f64) * 2000.0; // Scale x to 2000ms
@@ -96,20 +111,37 @@ fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize, wi
     let chart = Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis);
     frame.render_widget(chart, oscilloscope_area);
 
-    let dbfs_percent = {
-        if let Some(dbfs) = window.calculate_dbfs() {
-            let low_limit = -40.0; // dBFS low limit
-            let value = dbfs.min(0.0).max(low_limit);
-            (value - low_limit) / (-low_limit) // Normalize to 0.0 - 1.0
-        } else {
-            0.0
-        }
-    };
-    let dbfs_gauge = Gauge::default()
-        .block(Block::default().title("dBFS").borders(Borders::ALL))
-        .gauge_style(Color::Cyan)
-        .ratio(dbfs_percent as f64);
-    frame.render_widget(dbfs_gauge, dbfs_area);
+    frame.render_widget(
+        Chart::new(
+            vec![
+                Dataset::default()
+                    .name("Frequencies")
+                    .marker(Marker::Braille)
+                    .graph_type(GraphType::Line)
+                    .style(Color::Yellow)
+                    .data(&window.calculate_frequencies().unwrap_or_else(|| vec![
+                        (20.0, 0.0),
+                        (500.0, 0.0),
+                        (1000.0, 0.0),
+                        (1500.0, 0.0),
+                        (2000.0, 0.0),
+                    ])),
+            ]
+        )
+            .x_axis(
+                Axis::default()
+                    .title("Frequency (Hz)".blue())
+                    .bounds([20.0, 2000.0])
+                    .labels(["20", "500", "1000", "1500", "2000"]),
+            )
+            .y_axis(
+                Axis::default()
+                    .title("Magnitude".blue())
+                    .bounds([0.0, 1.0])
+                    .labels(["0", "0.5", "1"]),
+            ),
+        frequencies_area,
+    );
 }
 
 fn handle_events() -> std::io::Result<bool> {

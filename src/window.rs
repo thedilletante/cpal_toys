@@ -51,6 +51,34 @@ impl Window {
         let rms = self.calculate_rms()? + 1e-10;
         Some(20.0 * rms.log10())
     }
+
+    // Returns the frequency spectrum of the window
+    // using FFT
+    // from 20Hz to 20kHz
+    // Every element is a pair of the frequency and its center of mass
+    pub fn calculate_frequencies(&self) -> Option<Vec<(f64, f64)>> {
+        if !self.is_ready() {
+            return None;
+        }
+
+        let n = self.buffer.len();
+
+        let mut frequencies = Vec::with_capacity(n / 2);
+        for k in 0..n / 2 {
+            let mut real = 0.0;
+            let mut imag = 0.0;
+
+            for (i, &sample) in self.buffer.iter().enumerate() {
+                let angle = 2.0 * std::f64::consts::PI * (k as f64 * i as f64 / n as f64);
+                real += sample as f64 * angle.cos();
+                imag -= sample as f64 * angle.sin(); // Note: imaginary part is negated
+            }
+
+            let magnitude = (real * real + imag * imag).sqrt();
+            frequencies.push((k as f64, magnitude));
+        }
+        Some(frequencies)
+    }
 }
 
 #[cfg(test)]
