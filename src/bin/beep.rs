@@ -1,6 +1,6 @@
 use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
-    FromSample, Sample, SizedSample, I24,
+    FromSample, Sample, SizedSample,
 };
 
 use cpal_toy::{TonePlayerConfigBuilder, TonePlayer};

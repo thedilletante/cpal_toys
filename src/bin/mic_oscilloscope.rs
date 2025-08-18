@@ -1,10 +1,9 @@
 use ratatui::prelude::*;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Layout},
     widgets::{Block, Dataset, GraphType, Axis, Chart, Gauge, Borders},
     symbols::Marker,
-    Frame,
 };
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use anyhow::Context;
@@ -62,8 +61,6 @@ fn run(terminal: &mut ratatui::DefaultTerminal, queue: Arc<Queue<Vec<f32>>>, tot
 }
 
 fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize, window: &Window) {
-    use Constraint::{Fill, Length, Min};
-
     let layout = Layout::vertical([Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)]).spacing(1);
     let [top, dbfs_area, oscilloscope_area] = layout.areas(frame.area());
 

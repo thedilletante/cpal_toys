@@ -18,14 +18,16 @@ impl Window {
     pub fn add_samples(&mut self, samples: &[f32]) {
         if samples.len() > self.size {
             self.buffer.clear();
-            // If samples exceed the size, truncate to the last `size` samples
-            let to_add = &samples[samples.len() - self.size..];
             self.buffer.extend(&samples[samples.len() - self.size..]);
             return;
         }
 
-        while self.buffer.len() + samples.len() > self.size {
-            self.buffer.pop_front();
+        if self.buffer.len() + samples.len() > self.size {
+            // If adding these samples would exceed the size, we need to remove some from the front
+            let excess = self.buffer.len() + samples.len() - self.size;
+            if excess > 0 {
+                self.buffer.drain(0..excess.min(self.buffer.len()));
+            }
         }
 
         self.buffer.extend(samples);
@@ -67,6 +69,11 @@ mod tests {
         assert!(window.is_ready());
         assert_eq!(window.calculate_rms(), Some(0.0));
         assert_eq!(window.calculate_dbfs(), Some(-200.0));
+
+        window.add_samples(&[1.0; 441]);
+        assert!(window.is_ready());
+        assert_eq!(window.calculate_rms(), Some(0.70710677)); // sqrt(1/2)
+        assert_eq!(window.calculate_dbfs(), Some(-3.0103002));
     }
 
 }

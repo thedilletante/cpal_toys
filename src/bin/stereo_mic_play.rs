@@ -60,10 +60,6 @@ fn main() -> anyhow::Result<()> {
     let mut output: Option<(cpal::Device, cpal::SupportedStreamConfig)> = None;
 
     for device in output_devices {
-        if device.name()? != "Михаил’s AirPods Pro" {
-            // Skip the specific device
-            continue;
-        }
         let configs = all_output_configs(&device)?;
         for config_out in configs {
             if config_out.sample_rate() == config.sample_rate() && config_out.channels() == 2 {
