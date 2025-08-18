@@ -2,7 +2,7 @@ use ratatui::prelude::*;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
-    widgets::{Block, Dataset, GraphType, Axis, Chart},
+    widgets::{Block, Dataset, GraphType, Axis, Chart, Gauge, Borders},
     symbols::Marker,
     Frame,
 };
@@ -10,12 +10,13 @@ use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use anyhow::Context;
 use lockfree::queue::Queue;
 use std::sync::Arc;
+use cpal_toy::window::Window;
 
 fn main() -> anyhow::Result<()> {
     let host = cpal::default_host();
     let device = host.default_input_device().context("Failed to get default input device")?;
     let config = device.default_input_config().context("Failed to get default input config")?;
-    let sample_rate = config.sample_rate().0 as usize;
+    let sample_rate = config.sample_rate().0;
     let left_queue = Arc::new(Queue::new());
     let left_queue_input = left_queue.clone();
     let stream = device.build_input_stream(
@@ -30,34 +31,41 @@ fn main() -> anyhow::Result<()> {
     )?;
     stream.play().context("Failed to start the input stream")?;
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, left_queue, sample_rate * 2);
+    let window = Window::with_duration(std::time::Duration::from_millis(100), sample_rate);
+    let result = run(&mut terminal, left_queue, sample_rate as usize * 2, window);
     ratatui::restore();
     result.context("Failed to run the oscilloscope")
 }
 
-fn run(terminal: &mut ratatui::DefaultTerminal, queue: Arc<Queue<Vec<f32>>>, total_samples: usize) -> std::io::Result<()> {
+fn run(terminal: &mut ratatui::DefaultTerminal, queue: Arc<Queue<Vec<f32>>>, total_samples: usize, mut window: Window) -> std::io::Result<()> {
     let mut samples: Vec<f32> = vec![0.0; total_samples];
+    let mut last_timeout = std::time::Instant::now();
     loop {
         while let Some(data) = queue.pop() {
+            window.add_samples(&data);
             samples.extend(data);
             if samples.len() > total_samples {
                 samples.drain(0..samples.len() - total_samples); // Keep the last 1000 samples
             }
         }
-        //println!("Samples: {}", samples.len());
-        terminal.draw(|f| draw(f, &samples, total_samples))?;
-        //if handle_events()? {
-            //break;
-        //}
+        terminal.draw(|f| draw(f, &samples, total_samples, &window))?;
+        let next_tick = last_timeout + std::time::Duration::from_secs_f32(1.0 / 30.0);
+        if let Ok(true) = event::poll(next_tick.duration_since(std::time::Instant::now())) {
+            if handle_events()? {
+                break;
+            }
+        } else {
+            last_timeout = std::time::Instant::now();
+        }
     }
     Ok(())
 }
 
-fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize) {
+fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize, window: &Window) {
     use Constraint::{Fill, Length, Min};
 
-    let layout = Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).spacing(1);
-    let [top, oscilloscope_area] = layout.areas(frame.area());
+    let layout = Layout::vertical([Constraint::Length(1), Constraint::Length(3), Constraint::Fill(1)]).spacing(1);
+    let [top, dbfs_area, oscilloscope_area] = layout.areas(frame.area());
 
     let title = Line::from_iter([
         Span::from("Oscilloscope").bold(),
@@ -90,6 +98,21 @@ fn draw(frame: &mut ratatui::Frame, samples: &Vec<f32>, total_samples: usize) {
 
     let chart = Chart::new(vec![dataset]).x_axis(x_axis).y_axis(y_axis);
     frame.render_widget(chart, oscilloscope_area);
+
+    let dbfs_percent = {
+        if let Some(dbfs) = window.calculate_dbfs() {
+            let low_limit = -40.0; // dBFS low limit
+            let value = dbfs.min(0.0).max(low_limit);
+            (value - low_limit) / (-low_limit) // Normalize to 0.0 - 1.0
+        } else {
+            0.0
+        }
+    };
+    let dbfs_gauge = Gauge::default()
+        .block(Block::default().title("dBFS").borders(Borders::ALL))
+        .gauge_style(Color::Cyan)
+        .ratio(dbfs_percent as f64);
+    frame.render_widget(dbfs_gauge, dbfs_area);
 }
 
 fn handle_events() -> std::io::Result<bool> {

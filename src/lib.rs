@@ -1,6 +1,8 @@
 use cpal::{Sample, FromSample};
 use derive_builder::Builder;
 
+pub mod window;
+
 
 const DEFAULT_FREQUENCY: f32 = 440.0; // A4 note
 const DEFAULT_SAMPLE_RATE: u32 = 48000; // Common sample rate
